@@ -1,0 +1,74 @@
+{
+  "source": "dataeng_final.pdf, slide 5",
+  "scope": "Historical TriMet data for assigned vehicles; partial coverage.",
+  "breadcrumb": {
+    "records": 14369896,
+    "table_mb": 1050,
+    "service_days": 20,
+    "weekday_average": 820727,
+    "weekend_average": 411799
+  },
+  "stopevent": {
+    "records": 1079671,
+    "table_mb": 278,
+    "service_days": 14,
+    "weekday_average": 81944,
+    "weekend_average": 65058
+  },
+  "route_51": {
+    "source": "Pesentation_visuals.ipynb, stored output of cell 7",
+    "measure": "Unweighted mean of per-stop mean lateness, in minutes",
+    "periods": [
+      {
+        "period": "Morning",
+        "hours": "05:00-09:59",
+        "stops": 78,
+        "mean_minutes": 3.61
+      },
+      {
+        "period": "Midday",
+        "hours": "10:00-14:59",
+        "stops": 34,
+        "mean_minutes": 1.02
+      },
+      {
+        "period": "Afternoon / night",
+        "hours": "All other hours",
+        "stops": 78,
+        "mean_minutes": 2.34
+      }
+    ]
+  },
+  "selected_trips": [
+    {
+      "route": 72,
+      "trip": 248681274,
+      "boardings": 166,
+      "stop_events": 103
+    },
+    {
+      "route": 20,
+      "trip": 244936796,
+      "boardings": 149,
+      "stop_events": 132
+    },
+    {
+      "route": 75,
+      "trip": 249902002,
+      "boardings": 124,
+      "stop_events": 109
+    },
+    {
+      "route": 15,
+      "trip": 244849153,
+      "boardings": 122,
+      "stop_events": 85
+    },
+    {
+      "route": 57,
+      "trip": 249336172,
+      "boardings": 120,
+      "stop_events": 74
+    }
+  ]
+}

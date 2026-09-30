@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Chase Jamieson's TriMet data engineering case study: a Python and Google Cloud Pub/Sub pipeline, PostgreSQL transformations, and SQL analysis of Portland transit data.">
+  <meta name="theme-color" content="#ffffff">
+  <title>TriMet Data Pipeline | Chase Jamieson</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="identity" href="#main"><span class="hex" aria-hidden="true"></span>Chase Jamieson<span class="identity-note"> / Selected work</span></a>
+      <nav aria-label="Page sections">
+        <a href="#architecture">Architecture</a>
+        <a href="#engineering">Engineering</a>
+        <a href="#findings">Findings</a>
+        <a href="#sources">Sources</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="intro container" aria-labelledby="project-title">
+      <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span>Data engineering <span class="divider">/</span> Portland State University <span class="divider">/</span> Spring 2026</p>
+      <h1 id="project-title">TriMet Data Pipeline<span class="title-dot">.</span></h1>
+      <p class="lead">A distributed Python and PostgreSQL pipeline for processing 15.45 million transit records.</p>
+      <p class="intro-copy">I implemented and deployed ingestion, validation, transformation, and backup services across three Google Cloud regions. The pipeline combines Google Cloud Pub/Sub with PostgreSQL batch loading and SQL-based analysis of historical vehicle locations and stop events.</p>
+      <div class="intro-bottom">
+        <p class="stack">Python <span>/</span> PostgreSQL <span>/</span> Google Cloud <span>/</span> Pub/Sub <span>/</span> Linux</p>
+        <a class="text-link" href="assets/presentation.pdf">Read the presentation <span class="file-tag">PDF · 8 slides</span></a>
+      </div>
+    </section>
+
+    <section class="metrics container" aria-label="Final dataset statistics">
+      <div><span class="metric-label">GPS records</span><strong>14.37<span>M</span></strong><span class="metric-detail">20 service days</span></div>
+      <div><span class="metric-label">Stop events</span><strong>1.08<span>M</span></strong><span class="metric-detail">14 service days</span></div>
+      <div><span class="metric-label">Cloud regions</span><strong>3</strong><span class="metric-detail">Oregon · Belgium · Taiwan</span></div>
+      <div><span class="metric-label">GPS insert batch</span><strong>25,000</strong><span class="metric-detail">Rows staged at a time</span></div>
+    </section>
+    <p class="container source-note">Final project snapshot · Historical TriMet data · Coverage varies by dataset</p>
+
+    <section class="container first-look" aria-labelledby="map-title">
+      <div class="figure-heading"><h2 id="map-title">The data, on the map</h2><span class="small-label">Five selected trips · Portland metro area</span></div>
+      <figure>
+        <a class="image-link" href="assets/routes.webp" aria-label="Open the full-size map of five selected transit trips">
+          <img class="route-map" src="assets/routes.webp" width="1600" height="820" alt="Observed paths for routes 72, 20, 75, 15, and 57 across the Portland area. Circles show boardings and black-outlined squares show alightings.">
+        </a>
+        <div class="map-legend" aria-label="Route colors">
+          <span><i class="swatch r72" aria-hidden="true"></i>72</span>
+          <span><i class="swatch r20" aria-hidden="true"></i>20</span>
+          <span><i class="swatch r75" aria-hidden="true"></i>75</span>
+          <span><i class="swatch r15" aria-hidden="true"></i>15</span>
+          <span><i class="swatch r57" aria-hidden="true"></i>57</span>
+          <span class="legend-explanation">Circles: boardings &nbsp; · &nbsp; Squares: alightings</span>
+        </div>
+        <figcaption>The highest-boarding observed trip from each of five routes, joined to its GPS path. These are individual trips, not route-wide ridership totals. <a href="#finding-trips">See the comparison below.</a></figcaption>
+      </figure>
+    </section>
+
+    <section id="architecture" class="section architecture-section">
+      <div class="container">
+        <div class="section-heading"><span class="section-number">01</span><div><p class="eyebrow">Architecture</p><h2>Two data streams. One analytical store.</h2></div></div>
+        <p class="section-intro">A publisher fetches data for the assigned vehicles from the course BusData API. Separate Pub/Sub topics carry GPS records and stop events to independent analysis and backup subscribers.</p>
+        <div class="stream-definitions">
+          <div><span class="stream-label cyan">BreadCrumbs</span><h3>Where the bus went</h3><p>JSON records with position, timestamp, trip, vehicle, and odometer readings. The pipeline derives speed from consecutive observations within a trip.</p></div>
+          <div><span class="stream-label blue">StopEvents</span><h3>What happened at the stop</h3><p>HTML tables parsed with BeautifulSoup: arrivals, scheduled times, dwell, boardings, and alightings. Coordinates are transformed into latitude and longitude.</p></div>
+        </div>
+        <figure class="architecture-figure">
+          <a class="image-link" href="assets/architecture.webp" aria-label="Open the full-size pipeline architecture diagram"><img src="assets/architecture.webp" width="1672" height="941" loading="lazy" alt="Architecture diagram: Oregon publisher sends BreadCrumb and StopEvent messages through separate Pub/Sub topics to analysis in Belgium and backups in Taiwan, with PostgreSQL powering SQL and Folium analysis."></a>
+          <figcaption>Analysis subscribers load PostgreSQL; independent backup subscribers archive raw messages.</figcaption>
+        </figure>
+        <ol class="pipeline-steps">
+          <li><span>Collect &amp; publish</span><p>Fetch JSON and HTML data, normalize records, and publish messages with a shared run ID.</p></li>
+          <li><span>Validate &amp; transform</span><p>Check required fields and coordinates, normalize timestamps, and compute trip-level speed in SQL.</p></li>
+          <li><span>Store &amp; analyze</span><p>Load relational tables, join on trip identifiers, and explore movement and passenger activity.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="engineering" class="section engineering-section">
+      <div class="container">
+        <div class="section-heading"><span class="section-number">02</span><div><p class="eyebrow">Engineering decisions</p><h2>Designing for scale, data quality, and operations</h2></div></div>
+        <div class="decision-list">
+          <article><span class="decision-label">Memory</span><div><h3>Bounded-memory processing with PostgreSQL staging</h3><p>I buffered GPS records in batches of 25,000 and inserted them into PostgreSQL staging tables. SQL <code>LAG()</code> window functions handled trip ordering, sequence checks, and speed calculations. Pub/Sub flow control limited outstanding messages.</p></div></article>
+          <article><span class="decision-label">Message order</span><div><h3>Handling out-of-order messages</h3><p>I attached run IDs to messages and published an expected-record count after each run's data had been sent. Subscribers used that count to continue processing when the completion sentinel arrived before the remaining records.</p></div></article>
+          <article><span class="decision-label">Data quality</span><div><h3>Validation and invalid-record logging</h3><p>I implemented checks for required fields, geographic bounds, and trip sequence consistency, with invalid records written to JSONL logs for investigation. Stop-event transformations normalized timestamps and converted State Plane coordinates to latitude and longitude.</p></div></article>
+          <article><span class="decision-label">Operations</span><div><h3>Scheduled execution and independent backups</h3><p>I configured cron for daily publishing and systemd to manage subscriber processes and restart them after failures. Separate backup consumers compressed raw records for inspection independently of the transformed database.</p></div></article>
+        </div>
+        <div class="lessons"><h3>Reliability improvements</h3><p>My next priorities are durable checkpoints, duplicate-aware completion checks, and alerts for missed or incomplete runs. Collection gaps also highlighted the importance of establishing backup coverage early. Run IDs and record counts address message ordering, but do not by themselves guarantee exactly-once processing or recovery after a crash.</p></div>
+      </div>
+    </section>
+
+    <section id="findings" class="section container">
+      <div class="section-heading"><span class="section-number">03</span><div><p class="eyebrow">Findings</p><h2>SQL analysis and findings</h2></div></div>
+      <p class="section-intro">The final dataset contains 15,449,567 records across both tables. I used SQL aggregations, trip-level joins, and geographic visualizations to explore service volume, lateness, and passenger activity.</p>
+
+      <article class="finding" id="finding-volume">
+        <div class="finding-title"><span class="finding-index">A</span><h3>Weekday GPS volume is nearly twice the weekend average.</h3></div>
+        <div class="comparison-layout">
+          <div class="volume-charts" aria-label="Average records per service day">
+            <div class="bar-group">
+              <h4>BreadCrumbs <span>Average records / day</span></h4>
+              <div class="bar-row"><span>Weekday</span><div class="bar-track"><div class="bar-fill cyan-fill" style="--bar-width:100%"></div></div><strong>820,727</strong></div>
+              <div class="bar-row"><span>Weekend</span><div class="bar-track"><div class="bar-fill blue-fill" style="--bar-width:50.174%"></div></div><strong>411,799</strong></div>
+            </div>
+            <div class="bar-group">
+              <h4>StopEvents <span>Average records / day</span></h4>
+              <div class="bar-row"><span>Weekday</span><div class="bar-track"><div class="bar-fill cyan-fill" style="--bar-width:100%"></div></div><strong>81,944</strong></div>
+              <div class="bar-row"><span>Weekend</span><div class="bar-track"><div class="bar-fill blue-fill" style="--bar-width:79.393%"></div></div><strong>65,058</strong></div>
+            </div>
+          </div>
+          <div class="finding-commentary"><p class="callout-number">2.0<span>×</span></p><p>As many GPS records on an average weekday as on an average weekend day in this sample.</p><p class="muted">Average daily record volume. Each chart uses its own scale.</p></div>
+        </div>
+        <details>
+          <summary>Dataset totals and coverage</summary>
+          <div class="table-scroll"><table><caption>Final presentation, slide 5</caption><thead><tr><th scope="col">Metric</th><th scope="col">BreadCrumbs</th><th scope="col">StopEvents</th></tr></thead><tbody><tr><th scope="row">Stored records</th><td>14,369,896</td><td>1,079,671</td></tr><tr><th scope="row">Reported table size</th><td>1,050 MB</td><td>278 MB</td></tr><tr><th scope="row">Service days</th><td>20</td><td>14</td></tr></tbody></table></div>
+          <p>These final totals are a later snapshot than the intermediate notebook runs. GPS and stop-event coverage spans different numbers of service days. Record volume reflects observed service and collection coverage; it is not a direct measure of passenger demand.</p>
+        </details>
+      </article>
+
+      <article class="finding" id="finding-lateness">
+        <div class="finding-title"><span class="finding-index">B</span><h3>Route 51 shows its largest average delay in the morning.</h3></div>
+        <p class="finding-intro">I grouped weekday stop events by stop and time period, then compared observed arrival time with scheduled stop time. The saved results show a higher mean of stop-level delays in the morning than at midday.</p>
+        <div class="period-grid">
+          <figure class="period">
+            <div class="period-heading"><h4>Morning</h4><span>05:00–09:59</span></div>
+            <div class="period-stat"><strong>3.61<span> min</span></strong><span>78 stops</span></div>
+            <a class="image-link" href="assets/morning.webp" aria-label="Open the Route 51 morning lateness map"><img src="assets/morning.webp" width="820" height="640" loading="lazy" alt="Route 51 morning stop-delay map, with numerous orange and red markers indicating late arrivals."></a>
+          </figure>
+          <figure class="period">
+            <div class="period-heading"><h4>Midday</h4><span>10:00–14:59</span></div>
+            <div class="period-stat"><strong>1.02<span> min</span></strong><span>34 stops</span></div>
+            <a class="image-link" href="assets/midday.webp" aria-label="Open the Route 51 midday lateness map"><img src="assets/midday.webp" width="820" height="640" loading="lazy" alt="Route 51 midday stop-delay map, covering 34 observed stops with an average of 1.02 minutes late."></a>
+          </figure>
+          <figure class="period">
+            <div class="period-heading"><h4>Afternoon / night</h4><span>All other hours</span></div>
+            <div class="period-stat"><strong>2.34<span> min</span></strong><span>78 stops</span></div>
+            <a class="image-link" href="assets/afternoon.webp" aria-label="Open the Route 51 afternoon and night lateness map"><img src="assets/afternoon.webp" width="820" height="640" loading="lazy" alt="Route 51 stop-delay map for hours outside the morning and midday windows; the average is 2.34 minutes late."></a>
+          </figure>
+        </div>
+        <div class="lateness-legend"><span><i class="swatch early" aria-hidden="true"></i>At least 1 min early</span><span><i class="swatch ontime" aria-hidden="true"></i>Over −1 to 1 min</span><span><i class="swatch late" aria-hidden="true"></i>Over 1 to 5 min</span><span><i class="swatch verylate" aria-hidden="true"></i>Over 5 min late</span></div>
+        <p class="source-note">Means across observed stops; coverage differs by period. Larger markers indicate a larger absolute average delay.</p>
+        <details>
+          <summary>How lateness was calculated</summary>
+          <div class="method-copy"><p><code>late_minutes = (arrive_time − stop_time) / 60 seconds</code></p><p>The query selects weekday Route 51 events with valid stop locations and excludes deviations larger than 60 minutes in either direction. It computes mean and median lateness for each stop and time period.</p><p>The displayed values are <strong>unweighted averages of those per-stop means</strong>, not averages over all passenger trips or all stop events. Midday covers fewer stops, so differences in coverage matter. The “afternoon / night” group also includes hours before 05:00.</p><p>Each map shares the same 20 observed trip paths. Stop markers vary by period; the path overlay is not filtered to that time window.</p><a class="text-link" href="assets/analysis.sql">Read the analysis SQL</a></div>
+        </details>
+      </article>
+
+      <article class="finding" id="finding-trips">
+        <div class="finding-title"><span class="finding-index">C</span><h3>Route 72 has the highest-boarding trip in this selection.</h3></div>
+        <div class="comparison-layout">
+          <div class="trip-chart" aria-label="Boardings on one selected trip per route">
+            <div class="bar-row"><span>Route 72</span><div class="bar-track"><div class="bar-fill r72" style="--bar-width:100%"></div></div><strong>166</strong></div>
+            <div class="bar-row"><span>Route 20</span><div class="bar-track"><div class="bar-fill r20" style="--bar-width:89.759%"></div></div><strong>149</strong></div>
+            <div class="bar-row"><span>Route 75</span><div class="bar-track"><div class="bar-fill r75" style="--bar-width:74.699%"></div></div><strong>124</strong></div>
+            <div class="bar-row"><span>Route 15</span><div class="bar-track"><div class="bar-fill r15" style="--bar-width:73.494%"></div></div><strong>122</strong></div>
+            <div class="bar-row"><span>Route 57</span><div class="bar-track"><div class="bar-fill r57" style="--bar-width:72.289%"></div></div><strong>120</strong></div>
+            <p class="source-note">Total boardings on each selected trip, not unique riders.</p>
+          </div>
+          <div class="finding-commentary"><h4>A join that preserves the right grain</h4><p>I selected the highest-boarding trip for each route among trips with GPS data, then kept the top five routes by that trip-level count.</p><p class="muted">The query joins stop events to distinct GPS trip IDs. This avoids multiplying passenger counts by the number of GPS points per trip.</p></div>
+        </div>
+        <details>
+          <summary>Selected trips and SQL method</summary>
+          <div class="table-scroll"><table><caption>Stored output from the presentation-visuals notebook</caption><thead><tr><th scope="col">Route</th><th scope="col">Trip ID</th><th scope="col">Boardings</th><th scope="col">Stop events</th></tr></thead><tbody><tr><th scope="row">72</th><td>248681274</td><td>166</td><td>103</td></tr><tr><th scope="row">20</th><td>244936796</td><td>149</td><td>132</td></tr><tr><th scope="row">75</th><td>249902002</td><td>124</td><td>109</td></tr><tr><th scope="row">15</th><td>244849153</td><td>122</td><td>85</td></tr><tr><th scope="row">57</th><td>249336172</td><td>120</td><td>74</td></tr></tbody></table></div>
+          <pre><code>JOIN (
+    SELECT DISTINCT trip_id
+    FROM breadcrumb
+) bc ON bc.trip_id = se.trip_number</code></pre>
+          <p>Aggregate boardings by route and trip, select the best trip per route with <code>DISTINCT ON</code>, then rank those trips. <a href="assets/analysis.sql">Full SQL</a></p>
+        </details>
+      </article>
+    </section>
+
+    <section id="sources" class="section container sources-section">
+      <div class="section-heading"><span class="section-number">04</span><div><p class="eyebrow">Project record</p><h2>Evidence, scope, and source material</h2></div></div>
+      <p class="section-intro">The presentation documents the architecture and final dataset. The implementation notebooks and SQL results provide the supporting evidence for this case study.</p>
+      <div class="source-links">
+        <a href="assets/presentation.pdf"><span>Final presentation</span><span class="file-tag">PDF · 8 slides</span></a>
+        <a href="assets/analysis.sql"><span>Analysis queries</span><span class="file-tag">SQL · 2 queries</span></a>
+        <a href="assets/results.json"><span>Reported results</span><span class="file-tag">JSON</span></a>
+      </div>
+      <div class="scope-note"><details><summary>Project context and data limitations</summary><p>Built by Chase Jamieson for PSU's Spring 2026 CS436/536 Data Engineering course, using historical observations from an assigned subset of vehicles. Collection gaps, unequal coverage, sensor noise, and small stop-level samples limit what can be generalized. Final presentation totals and earlier notebook snapshots represent different stages of the project. This is an academic project, not an official TriMet performance report or live feed.</p></details></div>
+      <p class="map-credit">Map results exported from <em>Pesentation_visuals.ipynb</em>. Basemap © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, rendered with Leaflet and Folium. Map paths and markers are saved observations.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer"><div class="container footer-inner"><div><strong>Chase Jamieson</strong><span>Data engineering · Software engineering</span></div><div class="footer-links"><a href="https://github.com/JamiesonChase2">GitHub</a><a href="mailto:chase.michael.jamieson@gmail.com">Email</a><a href="#main">Back to top</a></div></div></footer>
+</body>
+</html>
